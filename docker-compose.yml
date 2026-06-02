@@ -1,0 +1,10 @@
+services:
+  op-manga-dl-ger:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./downloads:/downloads
+    environment:
+      DOWNLOAD_ROOT: /downloads
+      HEADLESS: "true"

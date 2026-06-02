@@ -1,178 +1,163 @@
-# One Piece – Manga Downloader
+# One Piece – Manga Downloader als Docker-WebApp
 
-Ein Tool, um **One Piece**-Manga-Kapitel von `onepiece.tube` automatisiert herunterzuladen, die Seiten fortlaufend zu benennen und die Kapitel als **CBZ** zu verpacken.
-Es gibt eine **GUI-App (Tkinter)** sowie eine **CLI-Variante**. Die **deutschen Kapiteltitel** werden live von **OPwiki** geladen.
+Dieses Projekt wurde von einer lokalen Tkinter/CLI-Anwendung zu einer **containerisierten WebApp** umgebaut. Die bisherigen Kernfunktionen bleiben erhalten: Kapitel können als Einzelwert, Bereich oder kombinierte Liste heruntergeladen, fortlaufend benannt und als **CBZ** verpackt werden. Die Bedienung läuft jetzt über den Browser.
 
 > ⚠️ **Hinweis/Disclaimer**
-> Dieses Projekt ist nur für **privaten Gebrauch** gedacht. Beachte die **Nutzungsbedingungen** der Zielseiten und das **Urheberrecht** in deinem Land. Nutzung auf eigene Verantwortung.
-
----
-
-## Inhalt
-
-```
-.
-├─ onepiece_gui_downloader.py   # Empfohlene GUI-Anwendung (Logo & Icon werden zur Laufzeit erzeugt)
-├─ manga_downloader.py          # Optionale CLI-Version
-├─ assets_opdl/                 # Wird automatisch erzeugt (Logo/Icons)
-├─ downloads/                   # Standard-Zielordner für Kapitel (wird angelegt)
-└─ README.md
-```
+> Dieses Projekt ist nur für den privaten Gebrauch gedacht. Beachte die Nutzungsbedingungen der Zielseiten und das Urheberrecht in deinem Land. Nutzung auf eigene Verantwortung.
 
 ---
 
 ## Features
 
-* 🔽 Download **Einzelkapitel**, **Bereich** (`1150-1164`) oder **Listen** (`1150,1152-1155,1160`)
-* 🖼️ Automatisches Finden & Speichern aller Seiten mit Namen wie `Kapitel 1162 - Seite 001.jpg`
-* 🗂️ Automatisches **CBZ pro Kapitel**
-* 🏷️ **Deutsche Titel** via **OPwiki** (Carlsen-Titel/Fallback). Kein „(Seite 1)“ im Dateinamen
-* 🖥️ **GUI**: Ordnerauswahl, Browserwahl (Auto/Chrome/Edge/Firefox), Headless-Modus, Pause je Seite, Live-Log + Scrollbar, Abbrechen, Ordner öffnen
-* 🧰 **CLI** für Puristen
+* 🌐 **Weboberfläche** mit Formular, Job-Übersicht, Live-Protokoll und Abbrechen-Funktion
+* 🐳 **Dockerfile** und **docker-compose.yml** für einen reproduzierbaren Container
+* 🔽 Download von Einzelkapiteln (`1162`), Bereichen (`1150-1164`) und Listen (`1150,1152-1155,1160`)
+* 🖼️ Automatisches Finden und Speichern der Seitenbilder
+* 🗂️ Automatische CBZ-Erstellung pro Kapitel
+* 🏷️ Deutsche Kapitel-Titel via OPwiki mit Dateinamen-Fallback
+* 🧰 CLI-Kompatibilitätsmodus über `manga_downloader.py`
 
 ---
 
-## Voraussetzungen
+## Projektstruktur
 
-* **Python 3.10+** (getestet mit 3.10–3.12)
-* Windows, macOS oder Linux
-* Mindestens ein installierter Browser: **Chrome**, **Edge** oder **Firefox**
-
-### Installation
-
-```bash
-git clone <REPO-URL>
-cd <REPO-VERZEICHNIS>
-python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
-source .venv/bin/activate
-
-pip install -r requirements.txt
+```text
+.
+├─ app/
+│  ├─ downloader.py          # Wiederverwendbare Download- und CBZ-Logik
+│  ├─ main.py                # FastAPI-WebApp, Jobverwaltung und API-Endpunkte
+│  ├─ static/styles.css      # Styling der Weboberfläche
+│  └─ templates/             # HTML-Templates
+├─ tests/                    # Pytest-Tests für Parsing und Hilfsfunktionen
+├─ Dockerfile                # Container mit Python, Chromium und Chromedriver
+├─ docker-compose.yml        # Lokaler Start mit gemountetem ./downloads-Ordner
+├─ manga_downloader.py       # CLI-Kompatibilitätsstarter
+└─ onepiece_gui_downloader.py# Startet die neue WebApp statt der alten Tkinter-GUI
 ```
 
 ---
 
-## Nutzung (GUI)
+## Schnellstart mit Docker Compose
+
+```bash
+docker compose up --build
+```
+
+Danach im Browser öffnen:
+
+```text
+http://localhost:8000
+```
+
+Die Downloads werden lokal in `./downloads` abgelegt, weil `docker-compose.yml` diesen Ordner nach `/downloads` in den Container mountet.
+
+---
+
+## Docker ohne Compose
+
+```bash
+docker build -t op-manga-dl-ger .
+docker run --rm -p 8000:8000 -v "$PWD/downloads:/downloads" op-manga-dl-ger
+```
+
+---
+
+## Lokale Entwicklung ohne Docker
+
+Voraussetzungen:
+
+* Python 3.10+
+* Chrome/Chromium, Edge oder Firefox
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Optional kann die frühere GUI-Datei weiterhin gestartet werden. Sie öffnet jetzt die WebApp:
 
 ```bash
 python onepiece_gui_downloader.py
 ```
 
-1. **Download-Ordner** wählen (Standard: `./downloads`)
-2. **Kapitel** angeben:
-
-   * einzelnes Kapitel: `1162`
-   * Bereich: `1150-1164`
-   * Liste/Kombination: `1150,1152-1155,1160`
-3. **Browser** (Auto/Chrome/Edge/Firefox) & **Headless** wählen
-4. Optional **Pause je Seite** (Standard `0.5 s`) anpassen
-5. **Start** – Fortschritt im **Protokoll** (mit Scrollbar)
-
-Ausgabe-Dateien:
-
-```
-One Piece - Kapitel 1162 - <DE-Kapitelname>.cbz
-# Falls kein Titel gefunden:
-One Piece - Kapitel 1162.cbz
-```
-
----
-
-## Nutzung (CLI)
+CLI-Kompatibilitätsmodus:
 
 ```bash
 python manga_downloader.py
 ```
 
-* **E**: Ein Kapitel → z. B. `1162`
-* **B**: Bereich → z. B. `1150-1164`
+---
 
-Die Seiten werden geladen, benannt und zu **CBZ** gepackt.
+## WebApp-Bedienung
+
+1. Kapitelangabe eintragen:
+   * `1162`
+   * `1150-1164`
+   * `1150,1152-1155,1160`
+2. Download-Ordner im Container wählen, standardmäßig `/downloads`.
+3. Browser auf `Auto` lassen. Im Docker-Container wird Chromium genutzt.
+4. Headless aktiviert lassen.
+5. Optional Pause je Seite und das Löschen temporärer Seitenbilder nach CBZ-Erstellung einstellen.
+6. Download starten und das Live-Protokoll auf der Job-Seite verfolgen.
 
 ---
 
-## Funktionsweise (Kurz)
+## Wichtige Umgebungsvariablen
 
-* **Titelquelle**: OPwiki (2 URL/Skins). Reihenfolge:
-
-  1. „**Carlsen-Titel:** …“
-  2. `Kapitel {nr}: <Titel>`
-* **Browsersteuerung**: `selenium` + `webdriver-manager` (lädt beim ersten Start automatisch den passenden Treiber).
-* **Logo/Icons**: werden bei Programmstart per **Pillow** generiert (`assets_opdl/`).
-
-### Wichtige Parameter
-
-* `BASE_URL_TEMPLATE` – Quelle der Seitenbilder (aktuell `https://onepiece.tube/manga/kapitel/{chapter}/{page}`)
-* `DEFAULT_PAGE_SLEEP` – Pause je Seite (Sekunden)
-* `MAX_PAGES_GUESS` – Sicherheitsobergrenze für Seiten
-* `TIMEOUT_DOWNLOAD` – Timeout für Bild-Downloads
+| Variable | Standard | Beschreibung |
+| --- | --- | --- |
+| `DOWNLOAD_ROOT` | `/downloads` | Standard-Zielordner für Downloads |
+| `HEADLESS` | `true` | Headless-Standard für neue Jobs |
+| `PAGE_SLEEP` | `0.5` | Standardpause je Seite in Sekunden |
+| `MAX_PAGES_GUESS` | `999` | Sicherheitsobergrenze pro Kapitel |
+| `TIMEOUT_DOWNLOAD` | `30` | Timeout für Bilddownloads in Sekunden |
+| `BASE_URL_TEMPLATE` | `https://onepiece.tube/manga/kapitel/{chapter}/{page}` | Seitenquelle |
+| `CHROME_BIN` | `/usr/bin/chromium` im Dockerfile | Chromium/Chrome-Binary |
+| `CHROMEDRIVER_PATH` | `/usr/bin/chromedriver` im Dockerfile | Chromedriver-Pfad |
 
 ---
 
-## Als EXE bauen (Windows)
+## Tests
 
 ```bash
-pip install pyinstaller
-pyinstaller --onefile --noconsole --name "OnePiece-Downloader" onepiece_gui_downloader.py
+pytest
 ```
 
-* Output: `dist/OnePiece-Downloader.exe`
-* Für Debug-Ausgabe `--noconsole` weglassen.
-* Beim ersten Start kann das Laden des WebDrivers etwas dauern (Internet erforderlich).
+---
+
+## API-Endpunkte
+
+* `GET /` – Weboberfläche
+* `POST /jobs` – neuen Download-Job starten
+* `GET /jobs/{job_id}` – Job-Detailseite
+* `GET /api/jobs/{job_id}` – Jobstatus als JSON
+* `POST /api/jobs/{job_id}/cancel` – laufenden Job abbrechen
+* `GET /health` – einfacher Healthcheck
 
 ---
 
 ## Troubleshooting
 
-**`cannot find Chrome binary`**
+**Container startet, aber Downloads schlagen mit Browserfehler fehl**
 
-* Chrome ist nicht installiert oder nicht im Standardpfad.
-  Lösungen:
-* In der GUI **Browser = Edge/Firefox** wählen
-* Oder in `setup_driver_chrome()` `chrome_opts.binary_location = r"C:\Pfad\zu\chrome.exe"` setzen
+* Baue das Image neu: `docker compose build --no-cache`
+* Prüfe, ob Chromium und Chromedriver im Container vorhanden sind:
+  `docker compose run --rm op-manga-dl-ger chromium --version`
 
 **Keine Bilder gefunden / leere Kapitel**
 
-* Kapitel existiert nicht / Seitenstruktur geändert
-* `Pause je Seite` erhöhen (z. B. `1.0–1.5 s`)
-* Headless deaktivieren und erneut testen
-
-**Kein Kapiteltitel**
-
-* OPwiki hat (noch) keinen Eintrag → Datei wird ohne Titel erzeugt (gewollter Fallback)
+* Kapitel existiert nicht oder die Zielseite hat ihre Struktur geändert.
+* Erhöhe die Pause je Seite, z. B. auf `1.0` bis `1.5` Sekunden.
 
 **403/Rate-Limits**
 
-* `Pause je Seite` erhöhen
-* Headless aus, normalen Modus testen
-* (Fortgeschritten) Eigener User-Agent/Proxy im Code setzen
-
----
-
-## Roadmap
-
-* Fortschrittsbalken (pro Kapitel & gesamt)
-* Option „Seitenbilder nach CBZ löschen“
-* Parallelisierte Kapitel-Jobs (mit Rücksicht auf Rate-Limits)
-* Konfigurierbarer User-Agent / Proxy
-
----
-
-## Mitmachen
-
-Issues & PRs sind willkommen. Bitte angeben:
-
-* OS & Python-Version
-* Browser/Modus (Headless/Normal)
-* Kapitelangabe
-* relevanter Log-Ausschnitt
+* Pause je Seite erhöhen.
+* Weniger Kapitel pro Job starten.
 
 ---
 
 ## Lizenz
 
-```
 MIT License — Copyright (c) 2025 Psy
-```
