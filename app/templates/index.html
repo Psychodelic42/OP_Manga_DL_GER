@@ -8,6 +8,7 @@
 </head>
 <body>
   <main class="container">
+    <nav class="top-nav"><a href="/">Download</a><a href="/settings">Scheduler-Einstellungen</a></nav>
     <section class="hero">
       <div class="logo">OPDL</div>
       <div>
@@ -15,6 +16,7 @@
         <h1>One Piece Manga Downloader</h1>
         <p>Starte Downloads direkt im Browser und erstelle CBZ-Dateien im gemounteten Download-Ordner.</p>
       </div>
+      <div class="scheduler-pill">Scheduler: <strong>{{ "aktiv" if scheduler_status.enabled else "inaktiv" }}</strong></div>
     </section>
 
     <section class="card">
@@ -60,7 +62,7 @@
           {% for job in jobs %}
             <a class="job-row" href="/jobs/{{ job.id }}">
               <span class="status status-{{ job.status }}">{{ job.status }}</span>
-              <span>{{ job.config.chapters_spec }}</span>
+              <span>{{ job.config.chapters_spec }}{% if job.is_scheduled %} <em class="tag">Scheduler</em>{% endif %}</span>
               <small>{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</small>
             </a>
           {% endfor %}

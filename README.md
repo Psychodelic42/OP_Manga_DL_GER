@@ -16,6 +16,7 @@ Dieses Projekt wurde von einer lokalen Tkinter/CLI-Anwendung zu einer **containe
 * 🗂️ Automatische CBZ-Erstellung pro Kapitel
 * 🏷️ Deutsche Kapitel-Titel via OPwiki mit Dateinamen-Fallback
 * 🧰 CLI-Kompatibilitätsmodus über `manga_downloader.py`
+* ⏱️ Integrierter FastAPI-Scheduler für automatische Kapitelprüfungen und Downloads
 
 ---
 
@@ -25,7 +26,8 @@ Dieses Projekt wurde von einer lokalen Tkinter/CLI-Anwendung zu einer **containe
 .
 ├─ app/
 │  ├─ downloader.py          # Wiederverwendbare Download- und CBZ-Logik
-│  ├─ main.py                # FastAPI-WebApp, Jobverwaltung und API-Endpunkte
+│  ├─ main.py                # FastAPI-WebApp, Jobverwaltung, Scheduler-Anbindung und API-Endpunkte
+│  ├─ scheduler.py           # Persistente Scheduler-Einstellungen, Timing und Auto-Checks
 │  ├─ static/styles.css      # Styling der Weboberfläche
 │  └─ templates/             # HTML-Templates
 ├─ tests/                    # Pytest-Tests für Parsing und Hilfsfunktionen
@@ -49,7 +51,7 @@ Danach im Browser öffnen:
 http://localhost:8000
 ```
 
-Die Downloads werden lokal in `./downloads` abgelegt, weil `docker-compose.yml` diesen Ordner nach `/downloads` in den Container mountet.
+Die Downloads werden lokal in `./downloads` abgelegt, weil `docker-compose.yml` diesen Ordner nach `/downloads` in den Container mountet. Dort liegt standardmäßig auch die persistente Scheduler-Datei `/downloads/scheduler_state.json`, sodass Einstellungen und Fortschritt Container-Neustarts überleben.
 
 ---
 
@@ -104,15 +106,43 @@ python manga_downloader.py
 
 ---
 
+
+## Automatischer Kapitel-Scheduler
+
+Die WebApp enthält jetzt einen **integrierten Hintergrund-Scheduler**. Er läuft im bestehenden FastAPI-Prozess; es werden keine Cronjobs, separaten Services, noVNC-Container oder externen Scheduler benötigt. Die manuelle Download-Funktion bleibt unverändert nutzbar.
+
+Über den Navigationslink **Scheduler-Einstellungen** oder direkt über `/settings` kannst du:
+
+* den Scheduler aktivieren oder deaktivieren,
+* Zeitzone, Download-Ordner, Browser, Headless-Modus, Seitenpause und CBZ-Aufräumen konfigurieren,
+* das letzte erfolgreiche Kapitel und das nächste zu prüfende Kapitel setzen,
+* tägliche Prüfungen zu einer festen Uhrzeit konfigurieren,
+* ein Release-Follow-up-Fenster konfigurieren, das am eingestellten Wochentag ab einer Startzeit alle `release_check_interval_minutes` prüft,
+* Lookahead-Prüfungen und das Überspringen bereits vorhandener CBZ-Dateien steuern,
+* den aktuellen Status, letzte Prüf-/Erfolgszeiten, Fehler und die letzten Scheduler-Logs einsehen.
+
+Der Scheduler speichert Einstellungen und Laufzeitstatus als JSON. Der Pfad ist per Umgebungsvariable konfigurierbar:
+
+```bash
+SCHEDULER_STATE_FILE=/downloads/scheduler_state.json
+```
+
+Wenn die Datei fehlt, wird sie mit sinnvollen Defaults angelegt. Wenn sie beschädigt ist, wird sie als `.corrupt.<timestamp>` gesichert und neu erstellt, damit die WebApp weiter starten kann. JSON-Updates werden atomar geschrieben.
+
+Der Scheduler prüft vor einem Download leichtgewichtig, ob Kapitel-Seite 1 über die konfigurierte `BASE_URL_TEMPLATE` tatsächlich ein Bild liefert. Nicht verfügbare Kapitel werden nur protokolliert und nicht als Erfolg markiert. Bereits vorhandene `.cbz`-Dateien unterhalb des Download-Ordners werden bei aktiviertem `skip_existing_cbz` toleranter Kapitelnummer-Erkennung übersprungen und nicht gelöscht.
+
+> Hinweis: Der Scheduler kann nur prüfen, ob ein Kapitel verfügbar ist; er garantiert keine Release-Termine. Bitte nutze respektvolle Intervalle und vermeide aggressives Polling. Das Standard-Release-Intervall von **120 Minuten** sollte nicht unterschritten werden.
+
 ## Wichtige Umgebungsvariablen
 
 | Variable | Standard | Beschreibung |
 | --- | --- | --- |
 | `DOWNLOAD_ROOT` | `/downloads` | Standard-Zielordner für Downloads |
 | `HEADLESS` | `true` | Headless-Standard für neue Jobs |
-| `PAGE_SLEEP` | `0.5` | Standardpause je Seite in Sekunden |
+| `PAGE_SLEEP` | `0.5` (`1.0` in Compose) | Standardpause je Seite in Sekunden |
 | `MAX_PAGES_GUESS` | `999` | Sicherheitsobergrenze pro Kapitel |
 | `TIMEOUT_DOWNLOAD` | `30` | Timeout für Bilddownloads in Sekunden |
+| `SCHEDULER_STATE_FILE` | `/downloads/scheduler_state.json` | Persistente Scheduler-Einstellungen und Laufzeitstatus |
 | `BASE_URL_TEMPLATE` | `https://onepiece.tube/manga/kapitel/{chapter}/{page}` | Seitenquelle |
 | `CHROME_BIN` | `/usr/bin/chromium` im Dockerfile | Chromium/Chrome-Binary |
 | `CHROMEDRIVER_PATH` | `/usr/bin/chromedriver` im Dockerfile | Chromedriver-Pfad |
@@ -130,10 +160,17 @@ pytest
 ## API-Endpunkte
 
 * `GET /` – Weboberfläche
+* `GET /settings` – Scheduler-Einstellungsseite
+* `POST /settings` – Scheduler-Einstellungen speichern
+* `POST /settings/check-now` – sofortige Scheduler-Prüfung anstoßen
 * `POST /jobs` – neuen Download-Job starten
 * `GET /jobs/{job_id}` – Job-Detailseite
 * `GET /api/jobs/{job_id}` – Jobstatus als JSON
 * `POST /api/jobs/{job_id}/cancel` – laufenden Job abbrechen
+* `GET /api/scheduler/settings` – Scheduler-Einstellungen als JSON
+* `POST /api/scheduler/settings` – Scheduler-Einstellungen per JSON aktualisieren
+* `GET /api/scheduler/status` – Scheduler-Status inklusive Laufzustand und Logs
+* `POST /api/scheduler/check-now` – sofortige Scheduler-Prüfung per API anstoßen
 * `GET /health` – einfacher Healthcheck
 
 ---
