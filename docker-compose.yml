@@ -8,3 +8,5 @@ services:
     environment:
       DOWNLOAD_ROOT: /downloads
       HEADLESS: "true"
+      PAGE_SLEEP: "1.0"
+      SCHEDULER_STATE_FILE: /downloads/scheduler_state.json

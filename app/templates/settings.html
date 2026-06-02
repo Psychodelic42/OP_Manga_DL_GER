@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scheduler-Einstellungen</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <nav class="top-nav"><a href="/">Download</a><a href="/settings">Scheduler-Einstellungen</a></nav>
+
+    <section class="hero">
+      <div class="logo">OP</div>
+      <div>
+        <p class="eyebrow">Automatischer Kapitel-Scheduler</p>
+        <h1>Scheduler-Einstellungen</h1>
+        <p>Der Scheduler läuft im FastAPI-Prozess und speichert seinen Zustand als JSON-Datei.</p>
+      </div>
+      <div class="scheduler-pill">{{ "läuft gerade" if status.running else "bereit" }}</div>
+    </section>
+
+    {% if message %}<p class="notice success">{{ message }}</p>{% endif %}
+    {% if error %}<p class="notice error">{{ error }}</p>{% endif %}
+
+    <section class="card status-grid">
+      <div><span>Scheduler</span><strong>{{ "aktiv" if settings.enabled else "inaktiv" }}</strong></div>
+      <div><span>Letzte Prüfung</span><strong>{{ settings.last_check_at or "—" }}</strong></div>
+      <div><span>Letzter Erfolg</span><strong>{{ settings.last_success_at or "—" }}</strong></div>
+      <div><span>Letztes Kapitel</span><strong>{{ settings.last_successful_chapter or "—" }}</strong></div>
+      <div><span>Nächster Check</span><strong>{{ settings.next_chapter_to_check or "automatisch" }}</strong></div>
+      <div><span>Aktiv</span><strong>{{ "ja" if status.running else "nein" }}</strong></div>
+    </section>
+
+    {% if settings.last_error %}
+      <section class="card">
+        <h2>Letzter Fehler</h2>
+        <p class="error">{{ settings.last_error }}</p>
+        <form action="/settings/reset-error" method="post"><button type="submit">Fehler zurücksetzen</button></form>
+      </section>
+    {% endif %}
+
+    <section class="card">
+      <h2>Einstellungen</h2>
+      <form class="grid-form settings-form" method="post" action="/settings">
+        <label class="checkbox"><input name="enabled" type="checkbox" value="true" {% if settings.enabled %}checked{% endif %}> Scheduler aktivieren</label>
+        <label>Zeitzone<input name="timezone" value="{{ settings.timezone }}" required></label>
+        <label>Download-Ordner<input name="download_root" value="{{ settings.download_root }}" required></label>
+        <label>Browser<select name="browser">{% for browser in browsers %}<option value="{{ browser }}" {% if settings.browser == browser %}selected{% endif %}>{{ browser }}</option>{% endfor %}</select></label>
+        <label class="checkbox"><input name="headless" type="checkbox" value="true" {% if settings.headless %}checked{% endif %}> Headless ausführen</label>
+        <label>Pause je Seite<input name="page_sleep" type="number" min="0" step="0.1" value="{{ settings.page_sleep }}"></label>
+        <label class="checkbox"><input name="delete_pages_after_cbz" type="checkbox" value="true" {% if settings.delete_pages_after_cbz %}checked{% endif %}> Seitenbilder nach CBZ löschen</label>
+        <label class="checkbox"><input name="skip_existing_cbz" type="checkbox" value="true" {% if settings.skip_existing_cbz %}checked{% endif %}> Vorhandene CBZ überspringen</label>
+
+        <label>Initiales Kapitel<input name="initial_chapter" type="number" min="1" value="{{ settings.initial_chapter }}"></label>
+        <label>Letztes erfolgreiches Kapitel<input name="last_successful_chapter" type="number" min="1" value="{{ settings.last_successful_chapter or '' }}"></label>
+        <label>Nächstes zu prüfendes Kapitel<input name="next_chapter_to_check" type="number" min="1" value="{{ settings.next_chapter_to_check or '' }}"></label>
+        <label>Max. Lookahead<input name="max_chapter_lookahead" type="number" min="1" max="25" value="{{ settings.max_chapter_lookahead }}"></label>
+
+        <label class="checkbox"><input name="daily_check_enabled" type="checkbox" value="true" {% if settings.daily_check_enabled %}checked{% endif %}> Tägliche Prüfung aktiv</label>
+        <label>Tägliche Prüfzeit<input name="daily_check_time" type="time" value="{{ settings.daily_check_time }}"></label>
+
+        <label class="checkbox"><input name="release_followup_enabled" type="checkbox" value="true" {% if settings.release_followup_enabled %}checked{% endif %}> Release-Follow-up aktiv</label>
+        <label>Release-Wochentag<select name="release_weekday">{% for weekday in weekdays %}<option value="{{ weekday }}" {% if settings.release_weekday == weekday %}selected{% endif %}>{{ weekday }}</option>{% endfor %}</select></label>
+        <label>Release-Startzeit<input name="release_check_start_time" type="time" value="{{ settings.release_check_start_time }}"></label>
+        <label>Release-Intervall (Minuten)<input name="release_check_interval_minutes" type="number" min="30" value="{{ settings.release_check_interval_minutes }}"></label>
+        <label>Follow-up-Tage<input name="release_followup_days" type="number" min="1" max="14" value="{{ settings.release_followup_days }}"></label>
+
+        <button type="submit">Einstellungen speichern</button>
+      </form>
+    </section>
+
+    <section class="card actions">
+      <form action="/settings/check-now" method="post"><button type="submit">Jetzt prüfen</button></form>
+      <form action="/settings/reset-state" method="post" class="reset-form">
+        <label>Kapitelstatus zurücksetzen (RESET eingeben)<input name="confirm" placeholder="RESET"></label>
+        <button type="submit">Status zurücksetzen</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Scheduler-Protokoll</h2>
+      {% if settings.scheduler_logs %}
+        <pre class="logs">{{ '\n'.join(settings.scheduler_logs[-200:]) }}</pre>
+      {% else %}
+        <p>Noch keine Scheduler-Logs vorhanden.</p>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>
