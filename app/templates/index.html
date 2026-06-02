@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>One Piece Manga Downloader</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <section class="hero">
+      <div class="logo">OPDL</div>
+      <div>
+        <p class="eyebrow">Docker WebApp</p>
+        <h1>One Piece Manga Downloader</h1>
+        <p>Starte Downloads direkt im Browser und erstelle CBZ-Dateien im gemounteten Download-Ordner.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Neuen Download starten</h2>
+      <form action="/jobs" method="post" class="grid-form">
+        <label>
+          Kapitel (Einzel/Bereich/Liste)
+          <input name="chapters_spec" value="1150-1164" placeholder="1162 oder 1150-1164 oder 1150,1152-1154" required>
+        </label>
+        <label>
+          Download-Ordner im Container
+          <input name="save_root" value="{{ default_save_root }}" required>
+        </label>
+        <label>
+          Browser
+          <select name="browser">
+            <option selected>Auto</option>
+            <option>Chrome</option>
+            <option>Firefox</option>
+            <option>Edge</option>
+          </select>
+        </label>
+        <label>
+          Pause je Seite (Sek.)
+          <input name="page_sleep" type="number" min="0" step="0.1" value="{{ default_page_sleep }}">
+        </label>
+        <label class="checkbox">
+          <input name="headless" type="checkbox" value="true" {% if default_headless %}checked{% endif %}>
+          Headless ausführen
+        </label>
+        <label class="checkbox">
+          <input name="delete_pages_after_cbz" type="checkbox" value="true">
+          Seitenbilder nach CBZ löschen
+        </label>
+        <button type="submit">Download starten</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Letzte Jobs</h2>
+      {% if jobs %}
+        <div class="jobs">
+          {% for job in jobs %}
+            <a class="job-row" href="/jobs/{{ job.id }}">
+              <span class="status status-{{ job.status }}">{{ job.status }}</span>
+              <span>{{ job.config.chapters_spec }}</span>
+              <small>{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</small>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p>Noch keine Jobs gestartet.</p>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

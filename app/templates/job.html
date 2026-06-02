@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Download-Job {{ job.id }}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <a href="/" class="back">← Zurück</a>
+    <section class="card">
+      <div class="job-header">
+        <div>
+          <p class="eyebrow">Download-Job</p>
+          <h1>{{ job.config.chapters_spec }}</h1>
+          <p>Ziel: <code>{{ job.config.save_root }}</code></p>
+        </div>
+        <span id="status" class="status status-{{ job.status }}">{{ job.status }}</span>
+      </div>
+      <button id="cancel" type="button">Abbrechen</button>
+    </section>
+    <section class="card">
+      <h2>Live-Protokoll</h2>
+      <pre id="logs" class="logs">{{ '\n'.join(job.logs) }}</pre>
+      <p id="error" class="error">{{ job.error }}</p>
+    </section>
+  </main>
+  <script>
+    const jobId = "{{ job.id }}";
+    const terminalStates = new Set(["finished", "failed", "cancelled"]);
+    async function refresh() {
+      const response = await fetch(`/api/jobs/${jobId}`);
+      const data = await response.json();
+      const status = document.getElementById("status");
+      status.textContent = data.status;
+      status.className = `status status-${data.status}`;
+      document.getElementById("logs").textContent = data.logs.join("\n");
+      document.getElementById("error").textContent = data.error || "";
+      document.getElementById("cancel").disabled = terminalStates.has(data.status);
+      if (!terminalStates.has(data.status)) window.setTimeout(refresh, 1500);
+    }
+    document.getElementById("cancel").addEventListener("click", async () => {
+      await fetch(`/api/jobs/${jobId}/cancel`, {method: "POST"});
+      refresh();
+    });
+    refresh();
+  </script>
+</body>
+</html>
