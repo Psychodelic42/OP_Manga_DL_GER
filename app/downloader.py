@@ -28,6 +28,7 @@ DEFAULT_SAVE_ROOT = os.getenv("DOWNLOAD_ROOT", "/downloads")
 DEFAULT_HEADLESS = os.getenv("HEADLESS", "true").lower() not in {"0", "false", "no"}
 DEFAULT_PAGE_SLEEP = float(os.getenv("PAGE_SLEEP", "0.5"))
 MAX_PAGES_GUESS = int(os.getenv("MAX_PAGES_GUESS", "999"))
+MIN_PAGES_FOR_CBZ = int(os.getenv("MIN_PAGES_FOR_CBZ", "3"))
 TIMEOUT_DOWNLOAD = int(os.getenv("TIMEOUT_DOWNLOAD", "30"))
 
 OPWIKI_URLS = [
@@ -55,6 +56,7 @@ class ChapterResult:
     chapter: int
     pages: int
     cbz_path: str = ""
+    complete: bool = False
 
 
 @dataclass
@@ -64,7 +66,7 @@ class DownloadSummary:
 
     @property
     def successful(self) -> int:
-        return sum(1 for chapter in self.chapters if chapter.pages > 0)
+        return sum(1 for chapter in self.chapters if chapter.complete)
 
 
 RANGE_RE = re.compile(r"^\s*(\d+)\s*[-–]\s*(\d+)\s*$")
@@ -203,8 +205,13 @@ def save_image(session: requests.Session, img_url: str, out_path: str | Path) ->
 def pack_cbz_from_folder(folder: str | Path, cbz_path: str | Path) -> None:
     folder_path = Path(folder)
     files = sorted(path for path in folder_path.iterdir() if path.is_file())
+    pack_cbz_from_files(files, cbz_path)
+
+
+def pack_cbz_from_files(files: Iterable[str | Path], cbz_path: str | Path) -> None:
+    sorted_files = sorted(Path(path) for path in files)
     with zipfile.ZipFile(cbz_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for path in files:
+        for path in sorted_files:
             archive.write(path, arcname=path.name)
 
 
@@ -242,6 +249,7 @@ def download_chapter(
 
     session = requests.Session()
     seen_urls: set[str] = set()
+    saved_paths: list[Path] = []
     page_count = 0
 
     for page in range(1, MAX_PAGES_GUESS + 1):
@@ -270,31 +278,55 @@ def download_chapter(
         out_path = chapter_folder / page_name
         if save_image(session, img_url, out_path):
             page_count += 1
+            saved_paths.append(out_path)
             log(f"[+] {chapter}: Seite {page:03d} gespeichert → {page_name}")
         else:
             log(f"[!] Download fehlgeschlagen: {img_url}")
 
-    if page_count <= 0:
-        return ChapterResult(chapter=chapter, pages=0)
+    if page_count < MIN_PAGES_FOR_CBZ:
+        _delete_saved_pages(saved_paths)
+        _remove_empty_folder(chapter_folder)
+        if page_count <= 0:
+            log(f"[-] Kapitel {chapter} wurde nicht heruntergeladen: keine Seiten gefunden.")
+        else:
+            log(
+                f"[-] Kapitel {chapter} unvollstaendig: nur {page_count}/{MIN_PAGES_FOR_CBZ} "
+                "benoetigte Seiten gefunden. Keine CBZ erstellt."
+            )
+        return ChapterResult(chapter=chapter, pages=page_count)
 
     de_title = fetch_german_chapter_title(chapter)
     title_clean = clean_title(de_title) if de_title else None
     base_name = f"One Piece - Kapitel {chapter} - {title_clean}" if title_clean else f"One Piece - Kapitel {chapter}"
     cbz_path = save_root_path / f"{sanitize_filename(base_name)}.cbz"
-    pack_cbz_from_folder(chapter_folder, cbz_path)
+    pack_cbz_from_files(saved_paths, cbz_path)
     log(f"[✔] CBZ erstellt: {cbz_path}")
 
     if delete_pages_after_cbz:
-        for path in chapter_folder.iterdir():
-            if path.is_file():
-                path.unlink()
+        _delete_saved_pages(saved_paths)
         try:
             chapter_folder.rmdir()
             log(f"[i] Temporäre Seitendateien gelöscht: {chapter_folder}")
         except OSError:
             pass
 
-    return ChapterResult(chapter=chapter, pages=page_count, cbz_path=str(cbz_path))
+    return ChapterResult(chapter=chapter, pages=page_count, cbz_path=str(cbz_path), complete=True)
+
+
+def _delete_saved_pages(paths: Iterable[Path]) -> None:
+    for path in paths:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _remove_empty_folder(folder: Path) -> bool:
+    try:
+        folder.rmdir()
+        return True
+    except OSError:
+        return False
 
 
 def _first_image_url(driver: webdriver.Remote) -> Optional[str]:
@@ -304,6 +336,26 @@ def _first_image_url(driver: webdriver.Remote) -> Optional[str]:
     except NoSuchElementException:
         return None
     return src if src and src.startswith("http") else None
+
+
+def count_available_chapter_images(
+    driver: webdriver.Remote,
+    chapter: int,
+    page_sleep: float,
+    min_pages: int = MIN_PAGES_FOR_CBZ,
+) -> int:
+    seen_urls: set[str] = set()
+    for page in range(1, MAX_PAGES_GUESS + 1):
+        url = BASE_URL_TEMPLATE.format(chapter=chapter, page=page)
+        driver.get(url)
+        time.sleep(page_sleep)
+        img_url = _first_image_url(driver)
+        if not img_url or img_url in seen_urls:
+            break
+        seen_urls.add(img_url)
+        if len(seen_urls) >= min_pages:
+            break
+    return len(seen_urls)
 
 
 def run_download(config: DownloadConfig, log: LogFn, stop_flag: Event) -> DownloadSummary:

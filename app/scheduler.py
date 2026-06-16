@@ -6,7 +6,6 @@ import re
 import shutil
 import tempfile
 import threading
-import time
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, time as datetime_time, timedelta, timezone
 from pathlib import Path
@@ -16,12 +15,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from selenium.common.exceptions import WebDriverException
 
 from app.downloader import (
-    BASE_URL_TEMPLATE,
     DEFAULT_HEADLESS,
     DEFAULT_PAGE_SLEEP,
     DEFAULT_SAVE_ROOT,
+    MIN_PAGES_FOR_CBZ,
     DownloadConfig,
-    _first_image_url,
+    count_available_chapter_images,
     setup_driver,
 )
 
@@ -343,6 +342,15 @@ def find_existing_cbz(download_root: str | Path, chapter: int) -> Optional[Path]
     return None
 
 
+def _job_has_successful_download(job: Any) -> bool:
+    if getattr(job, "status", None) != "finished":
+        return False
+    summary = getattr(job, "summary", None)
+    if summary is None:
+        return not bool(getattr(job, "error", ""))
+    return getattr(summary, "successful", 0) > 0
+
+
 class ChapterScheduler:
     def __init__(
         self,
@@ -457,7 +465,7 @@ class ChapterScheduler:
                 )
                 self.log(f"[+] Kapitel {chapter} verfügbar; Scheduler startet Download-Job.")
                 job = self.run_scheduled_download(config, chapter, lambda msg: self.log(f"[job {chapter}] {msg}"))
-                if getattr(job, "status", None) == "finished":
+                if _job_has_successful_download(job):
                     self._mark_success(chapter)
                     continue
                 error = getattr(job, "error", "") or f"Scheduler-Download für Kapitel {chapter} nicht erfolgreich."
@@ -490,11 +498,20 @@ class ChapterScheduler:
         self.log(f"[✔] Kapitel {chapter} {action}; nächster Check: {highest + 1}.")
 
     def _chapter_available(self, driver: Any, chapter: int, settings: SchedulerSettings) -> bool:
-        url = BASE_URL_TEMPLATE.format(chapter=chapter, page=1)
         try:
-            driver.get(url)
-            time.sleep(settings.page_sleep)
-            return bool(_first_image_url(driver))
+            pages_found = count_available_chapter_images(
+                driver=driver,
+                chapter=chapter,
+                page_sleep=settings.page_sleep,
+                min_pages=MIN_PAGES_FOR_CBZ,
+            )
+            if pages_found < MIN_PAGES_FOR_CBZ:
+                self.log(
+                    f"[-] Kapitel {chapter} noch nicht vollstaendig: "
+                    f"{pages_found}/{MIN_PAGES_FOR_CBZ} Seiten gefunden."
+                )
+                return False
+            return True
         except WebDriverException as exc:
             self.log(f"[!] Verfügbarkeitsprüfung für Kapitel {chapter} fehlgeschlagen: {exc}")
             return False

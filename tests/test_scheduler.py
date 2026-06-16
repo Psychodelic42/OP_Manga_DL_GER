@@ -3,13 +3,18 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.downloader import ChapterResult, DownloadSummary
 from app.scheduler import (
+    MIN_PAGES_FOR_CBZ,
+    ChapterScheduler,
     SchedulerStateStore,
     SchedulerValidationError,
+    _job_has_successful_download,
     default_settings,
     find_existing_cbz,
     in_release_followup_window,
@@ -146,6 +151,41 @@ def test_skip_existing_cbz_detection_is_tolerant(tmp_path: Path):
 
     assert find_existing_cbz(tmp_path, 1162) == cbz
     assert find_existing_cbz(tmp_path, 1163) is None
+
+
+def test_finished_job_needs_complete_download_summary():
+    incomplete_summary = DownloadSummary(
+        chapters=[ChapterResult(chapter=1163, pages=2, complete=False)]
+    )
+    complete_summary = DownloadSummary(
+        chapters=[ChapterResult(chapter=1163, pages=MIN_PAGES_FOR_CBZ, complete=True)]
+    )
+
+    assert _job_has_successful_download(
+        SimpleNamespace(status="finished", error="", summary=incomplete_summary)
+    ) is False
+    assert _job_has_successful_download(
+        SimpleNamespace(status="finished", error="", summary=complete_summary)
+    ) is True
+    assert _job_has_successful_download(
+        SimpleNamespace(status="failed", error="nope", summary=complete_summary)
+    ) is False
+
+
+def test_chapter_available_requires_minimum_pages(tmp_path: Path, monkeypatch):
+    state_file = tmp_path / "scheduler_state.json"
+    store = SchedulerStateStore(state_file)
+    scheduler = ChapterScheduler(store, lambda: False, lambda *_args: None)
+    settings = store.get()
+
+    monkeypatch.setattr("app.scheduler.count_available_chapter_images", lambda **_kwargs: 2)
+    assert scheduler._chapter_available(object(), 1163, settings) is False
+
+    monkeypatch.setattr(
+        "app.scheduler.count_available_chapter_images",
+        lambda **_kwargs: MIN_PAGES_FOR_CBZ,
+    )
+    assert scheduler._chapter_available(object(), 1163, settings) is True
 
 
 def test_api_settings_validation_rejects_invalid_time():

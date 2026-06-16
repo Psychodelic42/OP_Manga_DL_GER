@@ -13,7 +13,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.downloader import DEFAULT_HEADLESS, DEFAULT_PAGE_SLEEP, DEFAULT_SAVE_ROOT, DownloadConfig, run_download
+from app.downloader import (
+    DEFAULT_HEADLESS,
+    DEFAULT_PAGE_SLEEP,
+    DEFAULT_SAVE_ROOT,
+    DownloadConfig,
+    DownloadSummary,
+    run_download,
+)
 from app.scheduler import (
     BROWSERS,
     DEFAULT_STATE_FILE,
@@ -41,6 +48,7 @@ class JobState:
     thread: Optional[threading.Thread] = None
     source: str = "manual"
     is_scheduled: bool = False
+    summary: Optional[DownloadSummary] = None
 
     def log(self, message: str) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -307,7 +315,15 @@ def _run_job(job: JobState) -> None:
     job.started_at = datetime.now(timezone.utc)
     try:
         summary = run_download(job.config, job.log, job.stop_flag)
-        job.status = "cancelled" if summary.stopped else "finished"
+        job.summary = summary
+        if summary.stopped:
+            job.status = "cancelled"
+        elif summary.successful <= 0:
+            job.error = "Kein vollstaendiges Kapitel heruntergeladen."
+            job.log(f"[!] {job.error}")
+            job.status = "failed"
+        else:
+            job.status = "finished"
     except Exception as exc:
         job.error = str(exc)
         job.log(f"[!] Fehler: {exc}")
